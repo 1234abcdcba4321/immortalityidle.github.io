@@ -88,15 +88,12 @@ export class MainLoopService {
       const newTime = new Date().getTime();
       const timeDiff = newTime - this.lastTime;
       this.lastTime = newTime;
+      let repeatTimes = 1;
       // do multiple tick events if chrome has been throttling the interval (cause the tab isn't active)
-      let repeatTimes = Math.floor(timeDiff / TICK_INTERVAL_MS) || 1;
+      let realTicks = Math.max(1, timeDiff / TICK_INTERVAL_MS)
       if (this.pause) {
-        this.bankedTicks++;
+        this.bankedTicks += realTicks/this.offlineDivider;
       } else {
-        if (this.bankedTicks > 0 && this.useBankedTicks){
-          repeatTimes += 10 / this.tickDivider;
-          this.bankedTicks -= 10 / this.tickDivider;
-        }
         if (this.characterService) {
           // should never be null but this keeps the compiler happy
           if (this.characterService.characterState.lifespan > 36500){
@@ -110,13 +107,22 @@ export class MainLoopService {
           // and one extra for every 5000 years you've ever lived, up to 100 repeats
           repeatTimes += Math.min(Math.floor(this.totalTicks / 1825000), 100);
         }
+        if (this.bankedTicks > 0 && this.useBankedTicks){
+          //using banked ticks makes time happen 10 times faster
+          realTicks *= 10;
+          this.bankedTicks -= realTicks;
+        }
+        repeatTimes *= realTicks;
+        repeatTimes = Math.floor(repeatTimes);
+        if (repeatTimes > 36500*this.tickDivider) {
+          // 100y/tick hardcap to help prevent too much lag; this shouldn't ever actually trigger in a normal situation
+          repeatTimes = 36500*this.tickDivider;
+        }
         for (let i = 0; i < repeatTimes; i++){
           this.tickCount++;
           if (this.tickCount >= this.tickDivider){
             this.tickCount = 0;
-            if (this.pause) {
-              this.bankedTicks++;
-            } else {
+            if (!this.pause) {
               this.tick();
             }
           }
